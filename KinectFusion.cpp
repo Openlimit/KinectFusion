@@ -1,4 +1,5 @@
 #include "KinectFusion.h"
+#include "mc_tables.h"
 
 void bilateral_filter(float *in_data, float *out_data, int width, int height,
                       int kernel_size, float range_sigma, float spatial_sigma);
@@ -24,6 +25,9 @@ void raycast_tsdf(float2 *tsdf_volume, Vec3f *vertex_map, Vec3f *normal_map,
                   int width, int height, float truncation_distance,
                   int3 &volume_size, float voxel_scale, Vec3f &volume_origin,
                   Mat3f &K, Mat4f &pose);
+
+void marching_cubes(float2 *tsdf_volume, int3 &volume_size, float voxel_scale, Vec3f &volume_origin,
+                    int *number_vertices_table, int *triangle_table, std::vector<float3> &triangles);
 
 KinectFusion::KinectFusion(CameraParameter &cameraParameter, KinectConfig &kinectConfig) {
     cam_param[0] = cameraParameter;
@@ -61,10 +65,20 @@ KinectFusion::KinectFusion(CameraParameter &cameraParameter, KinectConfig &kinec
                               sizeof(float2) * config.volume_size.x * config.volume_size.y *
                               config.volume_size.z));
 
+    CUDA_SAFE_CALL(cudaMalloc((void **) &triangle_table, sizeof(int) * 256 * 16));
+    CUDA_SAFE_CALL(cudaMemcpy(triangle_table, triangle_table_host, sizeof(int) * 256 * 16, cudaMemcpyHostToDevice));
+
+    CUDA_SAFE_CALL(cudaMalloc((void **) &number_vertices_table, sizeof(int) * 256));
+    CUDA_SAFE_CALL(cudaMemcpy(number_vertices_table, number_vertices_table_host, sizeof(int) * 256,
+                              cudaMemcpyHostToDevice));
+
     reset();
 }
 
 KinectFusion::~KinectFusion() {
+    CUDA_SAFE_FREE(triangle_table);
+    CUDA_SAFE_FREE(number_vertices_table);
+
     CUDA_SAFE_FREE(depth_map);
     CUDA_SAFE_FREE(tsdfVolume);
     for (int i = 0; i < LEVELS; ++i) {
@@ -82,6 +96,38 @@ void KinectFusion::reset() {
     pose_list.clear();
     CUDA_SAFE_CALL(cudaMemset(tsdfVolume, 0,
                               sizeof(float2) * config.volume_size.x * config.volume_size.y * config.volume_size.z));
+}
+
+void KinectFusion::extract_mesh(std::string &path) {
+    std::vector<float3> triangles;
+    marching_cubes(tsdfVolume, config.volume_size, config.voxel_scale, config.volume_origin, number_vertices_table,
+                   triangle_table, triangles);
+
+    std::ofstream file(path);
+    for (int i = 0; i < triangles.size(); i += 3) {
+        for (int k = 0; k < 3; ++k) {
+            float3 point = triangles[i + k];
+            file << "v " << point.x << " " << point.y << " " << point.z << std::endl;
+        }
+        file << "f " << i + 1 << " " << i + 2 << " " << i + 3 << std::endl;
+    }
+    file.close();
+}
+
+void KinectFusion::save_tsdf(std::string &path) {
+    int size = config.volume_size.x * config.volume_size.y * config.volume_size.z;
+
+    float2 *tsdfVolume_host = new float2[size];
+    CUDA_SAFE_CALL(cudaMemcpy(tsdfVolume_host, tsdfVolume, sizeof(float2) * size, cudaMemcpyDeviceToHost));
+
+    std::ofstream file(path, std::ios::binary);
+    for (int i = 0; i < size; ++i) {
+        file.write((char *) &tsdfVolume_host[i].x, sizeof(float));
+        file.write((char *) &tsdfVolume_host[i].y, sizeof(float));
+    }
+    file.close();
+
+    delete[] tsdfVolume_host;
 }
 
 bool KinectFusion::process(float *depth_frame) {
@@ -389,99 +435,4 @@ void KinectFusion::download_pre_vector_and_normal_pyramid(std::string &outPath) 
         delete[] vertex_map;
         delete[] normal_map;
     }
-}
-
-void KinectFusion::pose_test(float *depth1, float *depth2) {
-    CUDA_SAFE_CALL(cudaMemcpy(depth_map, depth2, sizeof(float) * cam_param[0].width * cam_param[0].height,
-                              cudaMemcpyHostToDevice));
-
-    bilateral_filter(depth_map, depth_pyramid[0], cam_param[0].width, cam_param[0].height,
-                     config.bfilter_kernel_size, config.bfilter_range_sigma, config.bfilter_spatial_sigma);
-
-    for (int i = 1; i < LEVELS; ++i) {
-        pyrDown(depth_pyramid[i - 1], depth_pyramid[i], cam_param[i].width, cam_param[i].height,
-                config.bfilter_kernel_size, config.bfilter_range_sigma);
-    }
-
-    for (int i = 0; i < LEVELS; ++i) {
-        compute_vertex_map(depth_pyramid[i], cur_vertex_pyramid[i], K[i], cam_param[i].width, cam_param[i].height);
-        compute_normal_map(cur_vertex_pyramid[i], cur_normal_pyramid[i], cam_param[i].width, cam_param[i].height);
-    }
-
-    CUDA_SAFE_CALL(cudaMemcpy(depth_pyramid[0], depth1, sizeof(float) * cam_param[0].width * cam_param[0].height,
-                              cudaMemcpyHostToDevice));
-
-//    bilateral_filter(depth_map, depth_pyramid[0], cam_param[0].width, cam_param[0].height,
-//                     config.bfilter_kernel_size, config.bfilter_range_sigma, config.bfilter_spatial_sigma);
-
-    for (int i = 1; i < LEVELS; ++i) {
-        pyrDown(depth_pyramid[i - 1], depth_pyramid[i], cam_param[i].width, cam_param[i].height,
-                config.bfilter_kernel_size, config.bfilter_range_sigma);
-    }
-
-    Vec3f min_point = config.volume_origin;
-    Vec3f max_point(config.volume_size.x * config.voxel_scale + min_point(0),
-                    config.volume_size.y * config.voxel_scale + min_point(1),
-                    config.volume_size.z * config.voxel_scale + min_point(2));
-
-    for (int i = 0; i < LEVELS; ++i) {
-        compute_vertex_map_cut(depth_pyramid[i], pre_vertex_pyramid[i], K[i], cam_param[i].width, cam_param[i].height,
-                               max_point, min_point);
-//        compute_vertex_map(depth_pyramid[i], pre_vertex_pyramid[i], K[i], cam_param[i].width, cam_param[i].height);
-        compute_normal_map(pre_vertex_pyramid[i], pre_normal_pyramid[i], cam_param[i].width, cam_param[i].height);
-    }
-
-    Mat4f cur = Mat4f::Identity();
-    float alpha = 0.001;
-    float beta = 0.001;
-    float gamma = 0.001;
-    Eigen::AngleAxisf rz(gamma, Eigen::Vector3f::UnitZ());
-    Eigen::AngleAxisf ry(beta, Eigen::Vector3f::UnitY());
-    Eigen::AngleAxisf rx(alpha, Eigen::Vector3f::UnitX());
-    Mat3f rotation(rz * ry * rx);
-    cur.block(0, 0, 3, 3) = rotation;
-    cur.block(0, 3, 3, 1) = Vec3f(0.2, 1.2, -2.2f);
-
-    Mat4f pre = cur;
-
-    for (int level = LEVELS - 1; level >= 0; --level) {
-        for (int iter = 0; iter < config.icp_iterations[level]; ++iter) {
-            Mat66d A;
-            Vec6d b;
-
-            estimate_step(cur, pre, K[level],
-                          cur_vertex_pyramid[level], cur_normal_pyramid[level],
-                          pre_vertex_pyramid[level], pre_normal_pyramid[level],
-                          cam_param[level].width, cam_param[level].height,
-                          config.distance_threshold, config.angle_threshold, A, b);
-
-            double det = A.determinant();
-            if (fabs(det) < 100000 /*1e-15*/ || std::isnan(det)) {
-                std::cout << "icp fail" << std::endl;
-                break;
-            }
-            Vec6f result = A.fullPivLu().solve(b).cast<float>();
-//            std::cout << result << std::endl << std::endl;
-
-            // Update pose
-            float alpha = result(0);
-            float beta = result(1);
-            float gamma = result(2);
-            Eigen::AngleAxisf rz(gamma, Eigen::Vector3f::UnitZ());
-            Eigen::AngleAxisf ry(beta, Eigen::Vector3f::UnitY());
-            Eigen::AngleAxisf rx(alpha, Eigen::Vector3f::UnitX());
-            Mat3f rotation(rz * ry * rx);
-
-            Mat4f inc;
-            inc.setIdentity();
-            inc.block(0, 0, 3, 3) = rotation;
-            inc.block(0, 3, 3, 1) = result.tail(3);
-            cur = inc * cur;
-        }
-    }
-
-    std::string out_path = "/home/meidai/下载/kinectfusion/";
-    Mat4f I = Mat4f::Identity();
-    download_cur_vertex_pyramid_with_pose(out_path, cur);
-    download_pre_vertex_pyramid_with_pose(out_path, I);
 }

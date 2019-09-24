@@ -17,7 +17,9 @@ struct CameraParameter {
 };
 
 struct KinectConfig {
-    int3 volume_size = make_int3(512, 512, 512);
+//    int3 volume_size = make_int3(512, 512, 512);
+//    int3 volume_size = make_int3(256, 256, 256);
+    int3 volume_size = make_int3(128, 128, 128);
     float voxel_scale = 1.f;
     Vec3f volume_origin = Vec3f(-200.f, -300.f, 200.f);
 
@@ -43,6 +45,10 @@ public:
 
     void reset();
 
+    void extract_mesh(std::string &path);
+
+    void save_tsdf(std::string &path);
+
     void download_depth_map(std::string &outPath);
 
     void download_depth_pyramid(std::string &outPath);
@@ -58,8 +64,6 @@ public:
     void download_cur_vertex_pyramid_with_pose(std::string &outPath, Mat4f &pose);
 
     void download_pre_vertex_pyramid_with_pose(std::string &outPath, Mat4f &pose);
-
-    void pose_test(float *depth1,float *depth2);
 
 //private:
     void surface_measurement(float *depth_frame);
@@ -88,6 +92,9 @@ public:
 
     float *depth_map;
     float2 *tsdfVolume;
+
+    int *triangle_table;
+    int *number_vertices_table;
 };
 
 

@@ -151,65 +151,6 @@ void save3DMarks(std::string &name, std::vector<Vec3f> &marks) {
     fs.close();
 }
 
-//int main() {
-//    CameraParameter param;
-////    param.width = 640;
-////    param.height = 480;
-////    param.focal_x = 621.079;
-////    param.focal_y = 621.079;
-////    param.principal_x = 313.03;
-////    param.principal_y = 239.562;
-//    param.width = 480;
-//    param.height = 640;
-//    param.focal_x = 594.818678f;
-//    param.focal_y = 594.818678f;
-//    param.principal_x = (480 - 1) / 2.0f;
-//    param.principal_y = (640 - 1) / 2.0f;
-//
-//    std::string marks_path = "/data1/3D_scan/yl/frame_data_yl1/marks.bin";
-//    std::vector<Vec3f> marks;
-//    read3DMarks(marks_path, marks);
-//    Vec3f max_marks(-1e9, -1e9, -1e9), min_marks(1e9, 1e9, 1e9);
-//    for (int i = 0; i < marks.size(); ++i) {
-//        for (int j = 0; j < 3; ++j) {
-//            if (marks[i](j) < min_marks(j))
-//                min_marks(j) = marks[i](j);
-//            if (marks[i](j) > max_marks(j))
-//                max_marks(j) = marks[i](j);
-//        }
-//    }
-//    float faceRatio = 2.2;
-//    float fw = (max_marks(1) - min_marks(1)) * faceRatio;
-//    float half_fw = fw * 0.5f;
-//    float xCenter = 0.5f * (max_marks(0) + min_marks(0));
-//    float yCenter = 0.8f * max_marks(1) + 0.2f * min_marks(1);
-//    min_marks(0) = xCenter - half_fw;
-//    min_marks(1) = yCenter - half_fw;
-//    min_marks(2) -= 15;
-//    max_marks = min_marks + Vec3f(fw, fw, fw);
-//
-//    KinectConfig config;
-//    config.voxel_scale = fw / (config.volume_size.x - 1);
-//    config.truncation_distance = config.voxel_scale * 5;
-//    config.volume_origin = min_marks;
-//
-//    KinectFusion kinectFusion(param, config);
-//
-//    std::string path = "/data1/3D_scan/yl/frame_data_yl1/depth/0.bin";
-//    float *depth = new float[param.height * param.width];
-//    readDepthFloat16(path, depth, param);
-//    kinectFusion.process(depth);
-//
-//    std::string out_dir = "/home/meidai/下载/kinectfusion/";
-//    kinectFusion.download_depth_pyramid(out_dir);
-//    kinectFusion.download_depth_map(out_dir);
-//    kinectFusion.download_cur_vertex_pyramid(out_dir);
-//    kinectFusion.download_cur_normal_pyramid(out_dir);
-//    kinectFusion.download_pre_vertex_pyramid(out_dir);
-//
-//    return 0;
-//}
-
 int main() {
     std::string path = "/data1/3D_scan/yl/frame_data_yl1/depth/";
     std::string out_dir = "/home/meidai/下载/kinectfusion/";
@@ -255,40 +196,19 @@ int main() {
     readFiles(file_list, path);
     std::sort(file_list.begin(), file_list.end(), compare);
 
-//    std::string name1 = path + file_list[0];
-//    std::string name2 = path + file_list[5];
-//
-//    float *depth1 = new float[param.height * param.width];
-//    readDepthFloat16(name1, depth1, param);
-//    float *depth2 = new float[param.height * param.width];
-//    readDepthFloat16(name2, depth2, param);
-//
-//    kinectFusion.pose_test(depth1, depth2);
-//    return 0;
-
-
     float *depth = new float[param.height * param.width];
     for (int i = 0; i < file_list.size(); ++i) {
         std::string name = path + file_list[i];
         std::cout << name << std::endl;
         readDepthFloat16(name, depth, param);
         kinectFusion.process(depth);
-//        if(i%5==0){
-//            kinectFusion.download_depth_map(out_dir);
-//            kinectFusion.download_pre_vertex_pyramid(out_dir);
-//            kinectFusion.download_cur_vertex_pyramid(out_dir);
-//            kinectFusion.download_cur_vector_and_normal_pyramid(out_dir);
-//            kinectFusion.download_pre_vector_and_normal_pyramid(out_dir);
-//        }
     }
 
-//    kinectFusion.download_depth_pyramid(out_dir);
-//    kinectFusion.download_depth_map(out_dir);
-//    kinectFusion.download_cur_vertex_pyramid(out_dir);
-//    kinectFusion.download_pre_vertex_pyramid(out_dir);
+//    std::string save_path = out_dir + "trajectory.obj";
+//    save_camera_trajectory(save_path, kinectFusion.pose_list);
 
-    std::string save_path = out_dir + "trajectory.obj";
-    save_camera_trajectory(save_path, kinectFusion.pose_list);
+    std::string mesh_path = out_dir + "mesh.obj";
+    kinectFusion.extract_mesh(mesh_path);
 
     return 0;
 }
