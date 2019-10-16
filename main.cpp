@@ -204,11 +204,24 @@ int main() {
         kinectFusion.process(depth);
     }
 
-//    std::string save_path = out_dir + "trajectory.obj";
-//    save_camera_trajectory(save_path, kinectFusion.pose_list);
-
-    std::string mesh_path = out_dir + "mesh.obj";
+    std::string save_path = out_dir + "trajectory_org.obj";
+    save_camera_trajectory(save_path, kinectFusion.pose_list);
+    std::string mesh_path = out_dir + "mesh128_org.obj";
     kinectFusion.extract_mesh(mesh_path);
+
+    time_t t1 = time(0);
+    kinectFusion.optimize();
+    time_t t2 = time(0);
+    printf("optimize time: %ld\n", t2 - t1);
+
+    kinectFusion.reFusion();
+    time_t t3 = time(0);
+    printf("reFusion time: %ld\n", t3 - t2);
+
+    std::string save_path_op = out_dir + "trajectory_op.obj";
+    save_camera_trajectory(save_path_op, kinectFusion.pose_list);
+    std::string mesh_path_op = out_dir + "mesh128_op.obj";
+    kinectFusion.extract_mesh(mesh_path_op);
 
     return 0;
 }

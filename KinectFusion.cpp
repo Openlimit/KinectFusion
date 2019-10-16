@@ -29,6 +29,8 @@ void raycast_tsdf(float2 *tsdf_volume, Vec3f *vertex_map, Vec3f *normal_map,
 void marching_cubes(float2 *tsdf_volume, int3 &volume_size, float voxel_scale, Vec3f &volume_origin,
                     int *number_vertices_table, int *triangle_table, std::vector<float3> &triangles);
 
+void solve(SolverInput &input, SolverState &state, SolverParameters &parameters);
+
 KinectFusion::KinectFusion(CameraParameter &cameraParameter, KinectConfig &kinectConfig) {
     cam_param[0] = cameraParameter;
     config = kinectConfig;
@@ -53,22 +55,22 @@ KinectFusion::KinectFusion(CameraParameter &cameraParameter, KinectConfig &kinec
 
     for (int i = 0; i < LEVELS; ++i) {
         int size = cam_param[i].width * cam_param[i].height;
-        CUDA_SAFE_CALL(cudaMalloc((void **) &depth_pyramid[i], sizeof(float) * size));
-        CUDA_SAFE_CALL(cudaMalloc((void **) &cur_vertex_pyramid[i], sizeof(Vec3f) * size));
-        CUDA_SAFE_CALL(cudaMalloc((void **) &cur_normal_pyramid[i], sizeof(Vec3f) * size));
-        CUDA_SAFE_CALL(cudaMalloc((void **) &pre_vertex_pyramid[i], sizeof(Vec3f) * size));
-        CUDA_SAFE_CALL(cudaMalloc((void **) &pre_normal_pyramid[i], sizeof(Vec3f) * size));
+        CUDA_SAFE_CALL(cudaMalloc(&depth_pyramid[i], sizeof(float) * size));
+        CUDA_SAFE_CALL(cudaMalloc(&cur_vertex_pyramid[i], sizeof(Vec3f) * size));
+        CUDA_SAFE_CALL(cudaMalloc(&cur_normal_pyramid[i], sizeof(Vec3f) * size));
+        CUDA_SAFE_CALL(cudaMalloc(&pre_vertex_pyramid[i], sizeof(Vec3f) * size));
+        CUDA_SAFE_CALL(cudaMalloc(&pre_normal_pyramid[i], sizeof(Vec3f) * size));
     }
 
-    CUDA_SAFE_CALL(cudaMalloc((void **) &depth_map, sizeof(float) * cam_param[0].width * cam_param[0].height));
-    CUDA_SAFE_CALL(cudaMalloc((void **) &tsdfVolume,
+    CUDA_SAFE_CALL(cudaMalloc(&depth_map, sizeof(float) * cam_param[0].width * cam_param[0].height));
+    CUDA_SAFE_CALL(cudaMalloc(&tsdfVolume,
                               sizeof(float2) * config.volume_size.x * config.volume_size.y *
                               config.volume_size.z));
 
-    CUDA_SAFE_CALL(cudaMalloc((void **) &triangle_table, sizeof(int) * 256 * 16));
+    CUDA_SAFE_CALL(cudaMalloc(&triangle_table, sizeof(int) * 256 * 16));
     CUDA_SAFE_CALL(cudaMemcpy(triangle_table, triangle_table_host, sizeof(int) * 256 * 16, cudaMemcpyHostToDevice));
 
-    CUDA_SAFE_CALL(cudaMalloc((void **) &number_vertices_table, sizeof(int) * 256));
+    CUDA_SAFE_CALL(cudaMalloc(&number_vertices_table, sizeof(int) * 256));
     CUDA_SAFE_CALL(cudaMemcpy(number_vertices_table, number_vertices_table_host, sizeof(int) * 256,
                               cudaMemcpyHostToDevice));
 
@@ -87,6 +89,10 @@ KinectFusion::~KinectFusion() {
         CUDA_SAFE_FREE(cur_normal_pyramid[i]);
         CUDA_SAFE_FREE(pre_vertex_pyramid[i]);
         CUDA_SAFE_FREE(pre_normal_pyramid[i]);
+    }
+
+    for (int i = 0; i < cachedFrames.size(); ++i) {
+        cachedFrames[i].free();
     }
 }
 
@@ -133,6 +139,8 @@ void KinectFusion::save_tsdf(std::string &path) {
 bool KinectFusion::process(float *depth_frame) {
     surface_measurement(depth_frame);
 
+    cache_data();
+
     bool icp_success = true;
     if (frame_id > 0) {
         icp_success = pose_estimation();
@@ -149,6 +157,148 @@ bool KinectFusion::process(float *depth_frame) {
     surface_prediction();
 
     frame_id++;
+}
+
+void KinectFusion::reFusion() {
+    CUDA_SAFE_CALL(cudaMemset(tsdfVolume, 0,
+                              sizeof(float2) * config.volume_size.x * config.volume_size.y * config.volume_size.z));
+    for (int i = 0; i < pose_list.size(); ++i) {
+        update_tsdf(cachedFrames[i].d_depthMap, tsdfVolume, config.volume_origin,
+                    cam_param[0].width, cam_param[0].height,
+                    config.volume_size, config.voxel_scale,
+                    config.truncation_distance, pose_list[i], K[0]);
+    }
+}
+
+void KinectFusion::optimize() {
+    const unsigned int numOfImages = pose_list.size();
+
+    unsigned int nNonLinearIterations = 3;
+    unsigned int nLinIterations = 100;
+    const int lv = LEVELS - 1;
+
+    //params
+    SolverParameters parameters;
+    parameters.nNonLinearIterations = nNonLinearIterations;
+    parameters.nLinIterations = nLinIterations;
+    parameters.denseDistThresh = 5;
+    parameters.denseDepthMax = 1000.f;
+    parameters.denseDepthMin = 0.f;
+    parameters.denseNormalThresh = 0.9;
+    parameters.denseOverlapCheckSubsampleFactor = 4;
+    parameters.minNumOverlapCorr = 10;
+    parameters.minNumDenseCorr = 100;
+    parameters.boundingMin = config.volume_origin;
+    parameters.boundingMax = config.volume_origin +
+                             Vec3f(config.volume_size.x, config.volume_size.y, config.volume_size.z) *
+                             config.voxel_scale;
+
+    //input
+    SolverInput input;
+    input.denseDepthWidth = cam_param[lv].width;
+    input.denseDepthHeight = cam_param[lv].height;
+    input.numberOfImages = numOfImages;
+    input.intrinsics = Vec4f(cam_param[lv].focal_x, cam_param[lv].focal_y,
+                             cam_param[lv].principal_x, cam_param[lv].principal_y);
+    CUDA_SAFE_CALL(cudaMalloc(&input.d_cacheFrames, sizeof(CUDADepthFrame) * numOfImages));
+    CUDA_SAFE_CALL(cudaMemcpy(input.d_cacheFrames, cachedFrames.data(), sizeof(CUDADepthFrame) * numOfImages,
+                              cudaMemcpyHostToDevice));
+    input.weightsDenseDepth = new float[nNonLinearIterations];
+    input.weightsDenseColor = new float[nNonLinearIterations];
+    for (int i = 0; i < nNonLinearIterations; ++i) {
+        input.weightsDenseDepth[i] = 1.f;
+        input.weightsDenseColor[i] = 0.f;
+    }
+
+    // state
+    Mat4f *d_transform;
+    CUDA_SAFE_CALL(cudaMalloc((void **) &d_transform, sizeof(Mat4f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMemcpy(d_transform, pose_list.data(), sizeof(Mat4f) * numOfImages, cudaMemcpyHostToDevice));
+
+    SolverState state;
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_xRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_xTrans, sizeof(Vec3f) * numOfImages));
+    convertMatricesToLiePoses(d_transform, numOfImages, state.d_xRot, state.d_xTrans);
+
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_deltaRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_deltaTrans, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_rRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_rTrans, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_zRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_zTrans, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_pRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_pTrans, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_Ap_XRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_Ap_XTrans, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_scanAlpha, sizeof(float) * 2));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_rDotzOld, sizeof(float) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_precondionerRot, sizeof(Vec3f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_precondionerTrans, sizeof(Vec3f) * numOfImages));
+
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_denseJtJ, sizeof(float) * 36 * numOfImages * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_denseJtr, sizeof(float) * 6 * numOfImages));
+
+    unsigned int numDenseImPairs = numOfImages * (numOfImages - 1) / 2;
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_denseCorrCounts, sizeof(float) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_denseOverlappingImages, sizeof(uint2) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_numDenseOverlappingImages, sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_xTransforms, sizeof(Mat4f) * numOfImages));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_xTransformInverses, sizeof(Mat4f) * numOfImages));
+#ifdef DEBUG
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_sumResidualDEBUG, sizeof(float) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_numCorrDEBUG, sizeof(int) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_J, sizeof(float) * 6 * numOfImages));
+#endif
+
+    solve(input, state, parameters);
+    CUDA_SAFE_CALL(cudaMemcpy(pose_list.data(), state.d_xTransforms,
+                              sizeof(Mat4f) * numOfImages, cudaMemcpyDeviceToHost));
+
+    delete[] input.weightsDenseDepth;
+    delete[] input.weightsDenseColor;
+    CUDA_SAFE_FREE(input.d_cacheFrames);
+    CUDA_SAFE_FREE(d_transform);
+
+    CUDA_SAFE_FREE(state.d_xRot);
+    CUDA_SAFE_FREE(state.d_xTrans);
+    CUDA_SAFE_FREE(state.d_deltaRot);
+    CUDA_SAFE_FREE(state.d_deltaTrans);
+    CUDA_SAFE_FREE(state.d_rRot);
+    CUDA_SAFE_FREE(state.d_rTrans);
+    CUDA_SAFE_FREE(state.d_zRot);
+    CUDA_SAFE_FREE(state.d_zTrans);
+    CUDA_SAFE_FREE(state.d_pRot);
+    CUDA_SAFE_FREE(state.d_pTrans);
+    CUDA_SAFE_FREE(state.d_Ap_XRot);
+    CUDA_SAFE_FREE(state.d_Ap_XTrans);
+    CUDA_SAFE_FREE(state.d_scanAlpha);
+    CUDA_SAFE_FREE(state.d_rDotzOld);
+    CUDA_SAFE_FREE(state.d_precondionerRot);
+    CUDA_SAFE_FREE(state.d_precondionerTrans);
+    CUDA_SAFE_FREE(state.d_denseJtJ);
+    CUDA_SAFE_FREE(state.d_denseJtr);
+    CUDA_SAFE_FREE(state.d_denseCorrCounts);
+    CUDA_SAFE_FREE(state.d_denseOverlappingImages);
+    CUDA_SAFE_FREE(state.d_numDenseOverlappingImages);
+    CUDA_SAFE_FREE(state.d_xTransforms);
+    CUDA_SAFE_FREE(state.d_xTransformInverses);
+}
+
+void KinectFusion::cache_data() {
+    CUDADepthFrame cachedFrame;
+
+    const int lv = LEVELS - 1;
+    const int size = cam_param[lv].width * cam_param[lv].height;
+    cachedFrame.alloc(cam_param[lv].width, cam_param[lv].height, cam_param[0].width, cam_param[0].height);
+
+    CUDA_SAFE_CALL(cudaMemcpy(cachedFrame.d_depthMap, depth_map,
+                              sizeof(float) * cam_param[0].width * cam_param[0].height, cudaMemcpyDeviceToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(cachedFrame.d_depthDownsampled, depth_pyramid[lv],
+                              sizeof(float) * size, cudaMemcpyDeviceToDevice));
+    copyVec3ToVec4(cachedFrame.d_cameraposDownsampled, cur_vertex_pyramid[lv], size, 1.0f);
+    copyVec3ToVec4(cachedFrame.d_normalsDownsampled, cur_normal_pyramid[lv], size, 0.f);
+
+    cachedFrames.push_back(cachedFrame);
 }
 
 
@@ -173,7 +323,7 @@ void KinectFusion::surface_measurement(float *depth_frame) {
 bool KinectFusion::pose_estimation() {
     Mat4f pre_pose = cur_pose;
 
-    for (int level = LEVELS - 1; level >= 0; --level) {
+    for (int level = LEVELS - 2; level >= 0; --level) {
         for (int iter = 0; iter < config.icp_iterations[level]; ++iter) {
             Mat66d A;
             Vec6d b;
@@ -217,7 +367,7 @@ void KinectFusion::surface_reconstruction() {
 }
 
 void KinectFusion::surface_prediction() {
-    for (int level = 0; level < LEVELS; ++level) {
+    for (int level = 0; level < LEVELS - 1; ++level) {
         raycast_tsdf(tsdfVolume, pre_vertex_pyramid[level], pre_normal_pyramid[level],
                      cam_param[level].width, cam_param[level].height,
                      config.truncation_distance, config.volume_size, config.voxel_scale, config.volume_origin,

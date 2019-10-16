@@ -20,5 +20,4 @@
 #define CUDA_SAFE_CALL(b) { if(b != cudaSuccess) {std::cout<< std::string(cudaGetErrorString(b)) <<std::endl;throw std::string(cudaGetErrorString(b));} }
 #define CUDA_SAFE_FREE(b) { if(b) { CUDA_SAFE_CALL(cudaFree(b)); b = NULL; } }
 
-
 #endif //KINECTFUSION_CUDA_COMMON_H

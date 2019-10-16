@@ -7,6 +7,7 @@
 
 #include "common.h"
 #include "cuda/cuda_common.h"
+#include "cuda/gn_solver.h"
 
 struct CameraParameter {
     int width, height;
@@ -29,7 +30,7 @@ struct KinectConfig {
     float bfilter_range_sigma = 5.f;
     float bfilter_spatial_sigma = 5.f;
 
-    std::vector<int> icp_iterations{10, 5, 4};
+    std::vector<int> icp_iterations{5, 3, 2};
 
     float distance_threshold = 10.f;
     float angle_threshold = cosf(3.14159254f * 30.0f / 180.0f);
@@ -43,7 +44,11 @@ public:
 
     bool process(float *depth_frame);
 
+    void optimize();
+
     void reset();
+
+    void reFusion();
 
     void extract_mesh(std::string &path);
 
@@ -73,6 +78,10 @@ public:
     void surface_reconstruction();
 
     void surface_prediction();
+
+    void cache_data();
+
+    std::vector<CUDADepthFrame> cachedFrames;
 
     KinectConfig config;
     int frame_id;
