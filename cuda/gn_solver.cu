@@ -1109,6 +1109,7 @@ __global__ void FindImageImageCorr_Kernel(SolverInput input, SolverState state, 
 
     if (idx < (input.denseDepthWidth * input.denseDepthHeight)) {
         Mat4f transform = state.d_xTransformInverses[i] * state.d_xTransforms[j];
+        //if (!computeAngleDiff(transform, 1.0f)) return; //~60 degrees
         if (!computeAngleDiff(transform, 0.52f)) return; //TODO ~30 degrees
 
         // find correspondence
@@ -1297,6 +1298,21 @@ __global__ void BuildDenseSystem_Kernel(SolverInput input, SolverState state, So
                                   fmaxf(0.0f, 1.0f - abs(colorRes) / (1.15f * parameters.denseColorThresh));
                 }
             }
+#ifdef DEBUG
+            float res_c = 0.f;
+            int num_c = 0;
+            if (foundCorrColor) {
+                res_c = depthRes;
+                num_c = 1;
+            }
+            res_c = warpReduce(res_c);
+            num_c = warpReduce(num_c);
+            __syncthreads();
+            if (idx % WARP_SIZE == 0) {
+                atomicAdd(&state.d_sumResidualDEBUG[imPairIdx], res_c);
+                atomicAdd(&state.d_numCorrDEBUG[imPairIdx], num_c);
+            }
+#endif
             addToLocalSystem(foundCorrColor, state.d_denseJtJ, state.d_denseJtr, state.d_J, input.numberOfImages * 6,
                              colorJacBlockRow_i, colorJacBlockRow_j, i, j, colorRes, colorWeight, idx);
         }

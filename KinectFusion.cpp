@@ -1,6 +1,10 @@
 #include "KinectFusion.h"
 #include "mc_tables.h"
 
+void compute_gradient(float *data, Vec2f *gradient, int width, int height);
+
+void downsample(float *in_data, float *out_data, int out_width, int out_height, int down_factor);
+
 void bilateral_filter(float *in_data, float *out_data, int width, int height,
                       int kernel_size, float range_sigma, float spatial_sigma);
 
@@ -63,6 +67,7 @@ KinectFusion::KinectFusion(CameraParameter &cameraParameter, KinectConfig &kinec
     }
 
     CUDA_SAFE_CALL(cudaMalloc(&depth_map, sizeof(float) * cam_param[0].width * cam_param[0].height));
+    CUDA_SAFE_CALL(cudaMalloc(&image_map, sizeof(float) * cam_param[0].width * cam_param[0].height));
     CUDA_SAFE_CALL(cudaMalloc(&tsdfVolume,
                               sizeof(float2) * config.volume_size.x * config.volume_size.y *
                               config.volume_size.z));
@@ -136,8 +141,8 @@ void KinectFusion::save_tsdf(std::string &path) {
     delete[] tsdfVolume_host;
 }
 
-bool KinectFusion::process(float *depth_frame) {
-    surface_measurement(depth_frame);
+bool KinectFusion::process(float *depth_frame, float *image_frame) {
+    surface_measurement(depth_frame, image_frame);
 
     cache_data();
 
@@ -156,6 +161,18 @@ bool KinectFusion::process(float *depth_frame) {
 
     surface_prediction();
 
+    frame_id++;
+}
+
+bool KinectFusion::process(float *depth_frame, float *image_frame, Mat4f &transform){
+    surface_measurement(depth_frame, image_frame);
+
+    cache_data();
+
+    cur_pose = transform;
+    pose_list.push_back(transform);
+
+    surface_reconstruction();
     frame_id++;
 }
 
@@ -185,6 +202,8 @@ void KinectFusion::optimize() {
     parameters.denseDepthMax = 1000.f;
     parameters.denseDepthMin = 0.f;
     parameters.denseNormalThresh = 0.9;
+    parameters.denseColorThresh = 0.1f;
+    parameters.denseColorGradientMin = 0.005f;
     parameters.denseOverlapCheckSubsampleFactor = 4;
     parameters.minNumOverlapCorr = 10;
     parameters.minNumDenseCorr = 100;
@@ -200,14 +219,14 @@ void KinectFusion::optimize() {
     input.numberOfImages = numOfImages;
     input.intrinsics = Vec4f(cam_param[lv].focal_x, cam_param[lv].focal_y,
                              cam_param[lv].principal_x, cam_param[lv].principal_y);
-    CUDA_SAFE_CALL(cudaMalloc(&input.d_cacheFrames, sizeof(CUDADepthFrame) * numOfImages));
-    CUDA_SAFE_CALL(cudaMemcpy(input.d_cacheFrames, cachedFrames.data(), sizeof(CUDADepthFrame) * numOfImages,
+    CUDA_SAFE_CALL(cudaMalloc(&input.d_cacheFrames, sizeof(CUDADataFrame) * numOfImages));
+    CUDA_SAFE_CALL(cudaMemcpy(input.d_cacheFrames, cachedFrames.data(), sizeof(CUDADataFrame) * numOfImages,
                               cudaMemcpyHostToDevice));
     input.weightsDenseDepth = new float[nNonLinearIterations];
     input.weightsDenseColor = new float[nNonLinearIterations];
     for (int i = 0; i < nNonLinearIterations; ++i) {
         input.weightsDenseDepth[i] = 1.f;
-        input.weightsDenseColor[i] = 0.f;
+        input.weightsDenseColor[i] = 1.f;
     }
 
     // state
@@ -282,10 +301,15 @@ void KinectFusion::optimize() {
     CUDA_SAFE_FREE(state.d_numDenseOverlappingImages);
     CUDA_SAFE_FREE(state.d_xTransforms);
     CUDA_SAFE_FREE(state.d_xTransformInverses);
+#ifdef DEBUG
+    CUDA_SAFE_FREE(state.d_sumResidualDEBUG);
+    CUDA_SAFE_FREE(state.d_numCorrDEBUG);
+    CUDA_SAFE_FREE(state.d_J);
+#endif
 }
 
 void KinectFusion::cache_data() {
-    CUDADepthFrame cachedFrame;
+    CUDADataFrame cachedFrame;
 
     const int lv = LEVELS - 1;
     const int size = cam_param[lv].width * cam_param[lv].height;
@@ -298,11 +322,16 @@ void KinectFusion::cache_data() {
     copyVec3ToVec4(cachedFrame.d_cameraposDownsampled, cur_vertex_pyramid[lv], size, 1.0f);
     copyVec3ToVec4(cachedFrame.d_normalsDownsampled, cur_normal_pyramid[lv], size, 0.f);
 
+    int factor = cam_param[0].width / cam_param[lv].width;
+    downsample(image_map, cachedFrame.d_intensityDownsampled, cam_param[lv].width, cam_param[lv].height, factor);
+    compute_gradient(cachedFrame.d_intensityDownsampled, cachedFrame.d_intensityDerivsDownsampled,
+                     cam_param[lv].width, cam_param[lv].height);
+
     cachedFrames.push_back(cachedFrame);
 }
 
 
-void KinectFusion::surface_measurement(float *depth_frame) {
+void KinectFusion::surface_measurement(float *depth_frame, float *image_frame) {
     CUDA_SAFE_CALL(cudaMemcpy(depth_map, depth_frame, sizeof(float) * cam_param[0].width * cam_param[0].height,
                               cudaMemcpyHostToDevice));
 
@@ -318,6 +347,9 @@ void KinectFusion::surface_measurement(float *depth_frame) {
         compute_vertex_map(depth_pyramid[i], cur_vertex_pyramid[i], K[i], cam_param[i].width, cam_param[i].height);
         compute_normal_map(cur_vertex_pyramid[i], cur_normal_pyramid[i], cam_param[i].width, cam_param[i].height);
     }
+
+    CUDA_SAFE_CALL(cudaMemcpy(image_map, image_frame, sizeof(float) * cam_param[0].width * cam_param[0].height,
+                              cudaMemcpyHostToDevice));
 }
 
 bool KinectFusion::pose_estimation() {

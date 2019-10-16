@@ -126,6 +126,35 @@ __global__ void pyrDown_kernel(float *in_data, float *out_data, int out_width, i
     out_data[idx] = D / weight;
 }
 
+__global__ void downsample_kernel(float *in_data, float *out_data, int out_width, int out_height, int down_factor) {
+    const int x = threadIdx.x + blockIdx.x * blockDim.x;
+    const int y = threadIdx.y + blockIdx.y * blockDim.y;
+    if (x >= out_width || y >= out_height)
+        return;
+
+    int in_width = out_width * down_factor;
+    int in_x = x * down_factor;
+    int in_y = y * down_factor;
+    int in_idx = in_y * in_width + in_x;
+    int idx = y * out_width + x;
+    out_data[idx] = in_data[in_idx];
+}
+
+__global__ void compute_gradient_kernel(float *data, Vec2f *gradient, int width, int height) {
+    const int x = threadIdx.x + blockIdx.x * blockDim.x;
+    const int y = threadIdx.y + blockIdx.y * blockDim.y;
+    if (x >= width || y >= height)
+        return;
+    int idx = y * width + x;
+    if (x + 1 == width || y + 1 == height) {
+        gradient[idx].setZero();
+    }
+
+    float gx = data[y * width + x + 1] - data[idx];
+    float gy = data[(y + 1) * width + x] - data[idx];
+    gradient[idx] = Vec2f(gx, gy);
+}
+
 void bilateral_filter(float *in_data, float *out_data, int width, int height,
                       int kernel_size, float range_sigma, float spatial_sigma) {
     dim3 block_size(BLOCK_SIZE_X, BLOCK_SIZE_Y);
@@ -153,5 +182,19 @@ void pyrDown(float *in_data, float *out_data, int out_width, int out_height, int
     dim3 block_size(BLOCK_SIZE_X, BLOCK_SIZE_Y);
     dim3 grid_size((out_width + block_size.x - 1) / block_size.x, (out_height + block_size.y - 1) / block_size.y);
     pyrDown_kernel << < grid_size, block_size >> > (in_data, out_data, out_width, out_height, kernel_size, range_sigma);
+    cudaDeviceSynchronize();
+}
+
+void downsample(float *in_data, float *out_data, int out_width, int out_height, int down_factor) {
+    dim3 block_size(8, 8);
+    dim3 grid_size((out_width + block_size.x - 1) / block_size.x, (out_height + block_size.y - 1) / block_size.y);
+    downsample_kernel << < grid_size, block_size >> > (in_data, out_data, out_width, out_height, down_factor);
+    cudaDeviceSynchronize();
+}
+
+void compute_gradient(float *data, Vec2f *gradient, int width, int height) {
+    dim3 block_size(8, 8);
+    dim3 grid_size((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+    compute_gradient_kernel << < grid_size, block_size >> > (data, gradient, width, height);
     cudaDeviceSynchronize();
 }

@@ -114,6 +114,25 @@ void readDepth(std::string &name, float *depth, CameraParameter &param) {
     fs.close();
 }
 
+void readImage(std::string &name, float *imageIntensity, CameraParameter &param) {
+    std::ifstream fs(name.c_str(), std::ios::binary);
+    for (int i = 0; i < param.height * param.width; ++i) {
+        char b, g, r, a;
+        fs.read(&b, sizeof(char));
+        fs.read(&g, sizeof(char));
+        fs.read(&r, sizeof(char));
+        fs.read(&a, sizeof(char));
+        float intensity = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
+
+        int x = i % param.width;
+        int y = i / param.width;
+        int idx = (param.height - y - 1) * param.width + x;
+
+        imageIntensity[idx] = intensity;
+    }
+    fs.close();
+}
+
 void readFiles(std::vector<std::string> &file_list, std::string &path) {
     struct dirent *ptr;
     DIR *dir = opendir(path.c_str());
@@ -153,6 +172,7 @@ void save3DMarks(std::string &name, std::vector<Vec3f> &marks) {
 
 int main() {
     std::string path = "/data1/3D_scan/yl/frame_data_yl1/depth/";
+    std::string image_path = "/data1/3D_scan/yl/frame_data_yl1/bgra/";
     std::string out_dir = "/home/meidai/下载/kinectfusion/";
     std::string marks_path = "/data1/3D_scan/yl/frame_data_yl1/marks.bin";
     std::string out_marks_path = out_dir + "marks.xyz";
@@ -197,11 +217,14 @@ int main() {
     std::sort(file_list.begin(), file_list.end(), compare);
 
     float *depth = new float[param.height * param.width];
+    float *image = new float[param.height * param.width];
     for (int i = 0; i < file_list.size(); ++i) {
         std::string name = path + file_list[i];
+        std::string image_name = image_path + file_list[i];
         std::cout << name << std::endl;
         readDepthFloat16(name, depth, param);
-        kinectFusion.process(depth);
+        readImage(image_name, image, param);
+        kinectFusion.process(depth, image);
     }
 
     std::string save_path = out_dir + "trajectory_org.obj";

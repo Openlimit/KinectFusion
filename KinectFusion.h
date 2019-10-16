@@ -42,7 +42,9 @@ public:
 
     ~KinectFusion();
 
-    bool process(float *depth_frame);
+    bool process(float *depth_frame, float *image_frame);
+
+    bool process(float *depth_frame, float *image_frame, Mat4f &transform);
 
     void optimize();
 
@@ -71,7 +73,7 @@ public:
     void download_pre_vertex_pyramid_with_pose(std::string &outPath, Mat4f &pose);
 
 //private:
-    void surface_measurement(float *depth_frame);
+    void surface_measurement(float *depth_frame, float *image_frame);
 
     bool pose_estimation();
 
@@ -81,7 +83,7 @@ public:
 
     void cache_data();
 
-    std::vector<CUDADepthFrame> cachedFrames;
+    std::vector<CUDADataFrame> cachedFrames;
 
     KinectConfig config;
     int frame_id;
@@ -99,6 +101,7 @@ public:
     Vec3f *pre_vertex_pyramid[LEVELS];
     Vec3f *pre_normal_pyramid[LEVELS];
 
+    float *image_map;
     float *depth_map;
     float2 *tsdfVolume;
 

@@ -54,12 +54,12 @@ struct CUDACachedFrame {
     Vec2f *d_intensityDerivsDownsampled;
 };
 
-typedef CUDACachedFrame<false> CUDADepthFrame;
+typedef CUDACachedFrame<true> CUDADataFrame;
 
 struct SolverInput {
     unsigned int numberOfImages;
 
-    CUDADepthFrame *d_cacheFrames;
+    CUDADataFrame *d_cacheFrames;
     unsigned int denseDepthWidth;
     unsigned int denseDepthHeight;
     Vec4f intrinsics;
