@@ -17,6 +17,8 @@
 #define BLOCK_SIZE_X 32
 #define BLOCK_SIZE_Y 32
 
+#define FULL_MASK 0xFFFFFFFF
+
 #define CUDA_SAFE_CALL(b) { if(b != cudaSuccess) {std::cout<< std::string(cudaGetErrorString(b)) <<std::endl;throw std::string(cudaGetErrorString(b));} }
 #define CUDA_SAFE_FREE(b) { if(b) { CUDA_SAFE_CALL(cudaFree(b)); b = NULL; } }
 

@@ -94,7 +94,7 @@ __global__ void get_occupied_voxels_kernel(float2 *tsdf_volume, int3 volume_size
     const int x = threadIdx.x + blockIdx.x * blockDim.x;
     const int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-    if (__all(x >= volume_size.x) || __all(y >= volume_size.y))
+    if (__all_sync(FULL_MASK, x >= volume_size.x) || __all_sync(FULL_MASK, y >= volume_size.y))
         return;
 
     const int flattened_tid =
@@ -112,7 +112,7 @@ __global__ void get_occupied_voxels_kernel(float2 *tsdf_volume, int3 volume_size
             n_vertices = (cube_index == 0 || cube_index == 255) ? 0 : number_vertices_table[cube_index];
         }
 
-        int total = __popc(__ballot(n_vertices > 0));
+        int total = __popc(__ballot_sync(FULL_MASK, n_vertices > 0));
 
         if (total == 0)
             continue;
@@ -124,7 +124,7 @@ __global__ void get_occupied_voxels_kernel(float2 *tsdf_volume, int3 volume_size
 
         int old_global_voxels_count = warps_buffer[warp_id];
 
-        int offset = binaryExclScan(__ballot(n_vertices > 0));
+        int offset = binaryExclScan(__ballot_sync(FULL_MASK, n_vertices > 0));
 
         if (old_global_voxels_count + offset < max_size && n_vertices > 0) {
             int current_voxel_index = volume_size.y * volume_size.x * z + volume_size.x * y + x;
