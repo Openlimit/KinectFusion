@@ -59,7 +59,7 @@ __global__ void compute_normal_kernel(Vec3f *vertex_map, Vec3f *normal_map, int 
 
     int idx = y * width + x;
     if (x == 0 || x + 1 == width || y == 0 || y + 1 == height) {
-        normal_map[idx].setConstant(NAN);
+        normal_map[idx].setConstant(FLT_MAX);
         return;
     }
 

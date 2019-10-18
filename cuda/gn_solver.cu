@@ -499,14 +499,14 @@ bilinearInterpolation(float x, float y, const float *d_input, unsigned int image
     float w0 = 0.0f;
     if (p00(0) < imageWidth && p00(1) < imageHeight) {
         float v00 = d_input[p00(1) * imageWidth + p00(0)];
-        if (v00 != NAN) {
+        if (v00 != FLT_MAX) {
             s0 += (1.0f - alpha) * v00;
             w0 += (1.0f - alpha);
         }
     }
     if (p10(0) < imageWidth && p10(1) < imageHeight) {
         float v10 = d_input[p10(1) * imageWidth + p10(0)];
-        if (v10 != NAN) {
+        if (v10 != FLT_MAX) {
             s0 += alpha * v10;
             w0 += alpha;
         }
@@ -516,14 +516,14 @@ bilinearInterpolation(float x, float y, const float *d_input, unsigned int image
     float w1 = 0.0f;
     if (p01(0) < imageWidth && p01(1) < imageHeight) {
         float v01 = d_input[p01(1) * imageWidth + p01(0)];
-        if (v01 != NAN) {
+        if (v01 != FLT_MAX) {
             s1 += (1.0f - alpha) * v01;
             w1 += (1.0f - alpha);
         }
     }
     if (p11(0) < imageWidth && p11(1) < imageHeight) {
         float v11 = d_input[p11(1) * imageWidth + p11(0)];
-        if (v11 != NAN) {
+        if (v11 != FLT_MAX) {
             s1 += alpha * v11;
             w1 += alpha;
         }
@@ -544,7 +544,7 @@ bilinearInterpolation(float x, float y, const float *d_input, unsigned int image
     }
 
     if (ww > 0.0f) return ss / ww;
-    else return NAN;
+    else return FLT_MAX;
 }
 
 inline __device__ Vec2f
@@ -561,14 +561,14 @@ bilinearInterpolation(float x, float y, const Vec2f *d_input, unsigned int image
     float w0 = 0.0f;
     if (p00(0) < imageWidth && p00(1) < imageHeight) {
         Vec2f v00 = d_input[p00(1) * imageWidth + p00(0)];
-        if (v00(0) != NAN) {
+        if (v00(0) != FLT_MAX) {
             s0 += (1.0f - alpha) * v00;
             w0 += (1.0f - alpha);
         }
     }
     if (p10(0) < imageWidth && p10(1) < imageHeight) {
         Vec2f v10 = d_input[p10(1) * imageWidth + p10(0)];
-        if (v10(0) != NAN) {
+        if (v10(0) != FLT_MAX) {
             s0 += alpha * v10;
             w0 += alpha;
         }
@@ -578,14 +578,14 @@ bilinearInterpolation(float x, float y, const Vec2f *d_input, unsigned int image
     float w1 = 0.0f;
     if (p01(0) < imageWidth && p01(1) < imageHeight) {
         Vec2f v01 = d_input[p01(1) * imageWidth + p01(0)];
-        if (v01(0) != NAN) {
+        if (v01(0) != FLT_MAX) {
             s1 += (1.0f - alpha) * v01;
             w1 += (1.0f - alpha);
         }
     }
     if (p11(0) < imageWidth && p11(1) < imageHeight) {
         Vec2f v11 = d_input[p11(1) * imageWidth + p11(0)];
-        if (v11(0) != NAN) {
+        if (v11(0) != FLT_MAX) {
             s1 += alpha * v11;
             w1 += alpha;
         }
@@ -606,7 +606,7 @@ bilinearInterpolation(float x, float y, const Vec2f *d_input, unsigned int image
     }
 
     if (ww > 0.0f) return ss / ww;
-    else return Vec2f(NAN, NAN);
+    else return Vec2f(FLT_MAX, FLT_MAX);
 }
 
 inline __device__ Vec4f
@@ -623,14 +623,14 @@ bilinearInterpolation(float x, float y, const Vec4f *d_input, unsigned int image
     float w0 = 0.0f;
     if (p00(0) < imageWidth && p00(1) < imageHeight) {
         Vec4f v00 = d_input[p00(1) * imageWidth + p00(0)];
-        if (v00(0) != NAN) {
+        if (v00(0) != FLT_MAX) {
             s0 += (1.0f - alpha) * v00;
             w0 += (1.0f - alpha);
         }
     }
     if (p10(0) < imageWidth && p10(1) < imageHeight) {
         Vec4f v10 = d_input[p10(1) * imageWidth + p10(0)];
-        if (v10(0) != NAN) {
+        if (v10(0) != FLT_MAX) {
             s0 += alpha * v10;
             w0 += alpha;
         }
@@ -640,14 +640,14 @@ bilinearInterpolation(float x, float y, const Vec4f *d_input, unsigned int image
     float w1 = 0.0f;
     if (p01(0) < imageWidth && p01(1) < imageHeight) {
         Vec4f v01 = d_input[p01(1) * imageWidth + p01(0)];
-        if (v01(0) != NAN) {
+        if (v01(0) != FLT_MAX) {
             s1 += (1.0f - alpha) * v01;
             w1 += (1.0f - alpha);
         }
     }
     if (p11(0) < imageWidth && p11(1) < imageHeight) {
         Vec4f v11 = d_input[p11(1) * imageWidth + p11(0)];
-        if (v11(0) != NAN) {
+        if (v11(0) != FLT_MAX) {
             s1 += alpha * v11;
             w1 += alpha;
         }
@@ -668,7 +668,7 @@ bilinearInterpolation(float x, float y, const Vec4f *d_input, unsigned int image
     }
 
     if (ww > 0.0f) return ss / ww;
-    else return Vec4f(NAN, NAN, NAN, NAN);
+    else return Vec4f(FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX);
 }
 
 
@@ -775,7 +775,7 @@ __inline__ __device__ bool findDenseCorr(unsigned int idx, unsigned int imageWid
     const Vec4f cposj = depthToCamera(intrinsics(0), intrinsics(1), intrinsics(2), intrinsics(3), loc, srcDepth[idx]);
     if (cposj(2) > depthMin && cposj(2) < depthMax && isInBoundingBox(cposj, transformj, boundingMin, boundingMax)) {
         Vec4f nrmj = srcNormals[idx];
-        if (nrmj(0) != NAN) {
+        if (nrmj(0) != FLT_MAX) {
             nrmj = transformi_inv * transformj * nrmj;
             Vec4f camPosSrcToTgt = transformi_inv * transformj * cposj;
             Vec2f tgtScreenPosf = cameraToDepth(intrinsics(0), intrinsics(1), intrinsics(2), intrinsics(3),
@@ -788,7 +788,7 @@ __inline__ __device__ bool findDenseCorr(unsigned int idx, unsigned int imageWid
                                                 tgtDepth[tgtScreenPos(1) * imageWidth + tgtScreenPos(0)]);
                 if (camPosTgt(2) > depthMin && camPosTgt(2) < depthMax) {
                     Vec4f normalTgt = tgtNormals[tgtScreenPos(1) * imageWidth + tgtScreenPos(0)];
-                    if (normalTgt(0) != NAN) {
+                    if (normalTgt(0) != FLT_MAX) {
                         Vec4f diff = camPosSrcToTgt - camPosTgt;
                         float dist = diff.norm();
                         float dNormal = nrmj.dot(normalTgt);
@@ -817,7 +817,7 @@ __device__ bool findDenseCorr(unsigned int idx, unsigned int imageWidth, unsigne
     if (cposj(2) > depthMin && cposj(2) < depthMax && isInBoundingBox(cposj, transformj, boundingMin, boundingMax)) {
         camPosSrc = cposj;
         Vec4f nrmj = srcNormals[idx];
-        if (nrmj(0) != NAN) {
+        if (nrmj(0) != FLT_MAX) {
             nrmj = transformi_inv * transformj * nrmj;
             camPosSrcToTgt = transformi_inv * transformj * camPosSrc;
             tgtScreenPosf = cameraToDepth(intrinsics(0), intrinsics(1), intrinsics(2), intrinsics(3), camPosSrcToTgt);
@@ -830,7 +830,7 @@ __device__ bool findDenseCorr(unsigned int idx, unsigned int imageWidth, unsigne
                     camPosTgt = cposi;
                     Vec4f nrmi = bilinearInterpolation(tgtScreenPosf(0), tgtScreenPosf(1), tgtNormals,
                                                        imageWidth, imageHeight);
-                    if (nrmi(0) != NAN) {
+                    if (nrmi(0) != FLT_MAX) {
                         normalTgt = nrmi;
                         Vec4f diff = camPosSrcToTgt - camPosTgt;
                         float dist = diff.norm();
@@ -1084,7 +1084,6 @@ addToLocalSystem(bool isValidCorr, float *d_JtJ, float *d_Jtr, float *d_J, unsig
         }
         Ji = warpReduce(Ji);
         Jj = warpReduce(Jj);
-        __syncthreads();
         if (tidx % WARP_SIZE == 0) {
             atomicAdd(&d_J[vi * 6 + i], Ji);
             atomicAdd(&d_J[vj * 6 + i], Jj);
@@ -1244,7 +1243,6 @@ __global__ void BuildDenseSystem_Kernel(SolverInput input, SolverState state, So
                 // point-to-plane residual
                 Vec4f diff = camPosTgt - camPosSrcToTgt;
                 depthRes = diff.dot(normalTgt);
-//                depthWeight = parameters.weightDenseDepth * imPairWeight;
                 depthWeight = parameters.weightDenseDepth * imPairWeight *
                               (powf(fmaxf(0.0f, 1.0f - camPosTgt(2) / (2.0f * parameters.denseDepthMax)),
                                     2.5f)); //fr2_xyz_half
@@ -1262,7 +1260,6 @@ __global__ void BuildDenseSystem_Kernel(SolverInput input, SolverState state, So
             }
             res = warpReduce(res);
             num = warpReduce(num);
-            __syncthreads();
             if (idx % WARP_SIZE == 0) {
                 atomicAdd(&state.d_sumResidualDEBUG[imPairIdx], res);
                 atomicAdd(&state.d_numCorrDEBUG[imPairIdx], num);
@@ -1282,7 +1279,7 @@ __global__ void BuildDenseSystem_Kernel(SolverInput input, SolverState state, So
                                                                  input.d_cacheFrames[i].d_intensityDownsampled,
                                                                  input.denseDepthWidth, input.denseDepthHeight);
                 colorRes = intensityTgt - input.d_cacheFrames[j].d_intensityDownsampled[srcIdx];
-                foundCorrColor = (intensityTgt != NAN && intensityDerivTgt(0) != NAN &&
+                foundCorrColor = (intensityTgt != FLT_MAX && intensityDerivTgt(0) != FLT_MAX &&
                                   abs(colorRes) < parameters.denseColorThresh &&
                                   intensityDerivTgt.norm() > parameters.denseColorGradientMin);
                 if (foundCorrColor) {
@@ -1302,15 +1299,14 @@ __global__ void BuildDenseSystem_Kernel(SolverInput input, SolverState state, So
             float res_c = 0.f;
             int num_c = 0;
             if (foundCorrColor) {
-                res_c = depthRes;
+                res_c = colorRes;
                 num_c = 1;
             }
             res_c = warpReduce(res_c);
             num_c = warpReduce(num_c);
-            __syncthreads();
             if (idx % WARP_SIZE == 0) {
-                atomicAdd(&state.d_sumResidualDEBUG[imPairIdx], res_c);
-                atomicAdd(&state.d_numCorrDEBUG[imPairIdx], num_c);
+                atomicAdd(&state.d_sumResidualColorDEBUG[imPairIdx], res_c);
+                atomicAdd(&state.d_numCorrColorDEBUG[imPairIdx], num_c);
             }
 #endif
             addToLocalSystem(foundCorrColor, state.d_denseJtJ, state.d_denseJtr, state.d_J, input.numberOfImages * 6,
@@ -1343,6 +1339,8 @@ bool BuildDenseSystem(const SolverInput &input, SolverState &state, SolverParame
 #ifdef DEBUG
     CUDA_SAFE_CALL(cudaMemset(state.d_sumResidualDEBUG, 0, sizeof(float) * maxDenseImPairs));
     CUDA_SAFE_CALL(cudaMemset(state.d_numCorrDEBUG, 0, sizeof(int) * maxDenseImPairs));
+    CUDA_SAFE_CALL(cudaMemset(state.d_sumResidualColorDEBUG, 0, sizeof(float) * maxDenseImPairs));
+    CUDA_SAFE_CALL(cudaMemset(state.d_numCorrColorDEBUG, 0, sizeof(int) * maxDenseImPairs));
     CUDA_SAFE_CALL(cudaMemset(state.d_J, 0, sizeof(float) * sizeJtr));
 #endif
 
@@ -1398,25 +1396,33 @@ bool BuildDenseSystem(const SolverInput &input, SolverState &state, SolverParame
                               cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(numCorrDEBUG, state.d_numCorrDEBUG, sizeof(float) * numOverlapImagePairs,
                               cudaMemcpyDeviceToHost));
-    float *J = new float[sizeJtr];
-    CUDA_SAFE_CALL(cudaMemcpy(J, state.d_J, sizeof(float) * sizeJtr, cudaMemcpyDeviceToHost));
+    float *sumResidualColorDEBUG = new float[numOverlapImagePairs];
+    int *numCorrColorDEBUG = new int[numOverlapImagePairs];
+    CUDA_SAFE_CALL(cudaMemcpy(sumResidualColorDEBUG, state.d_sumResidualColorDEBUG,
+                              sizeof(float) * numOverlapImagePairs,
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(numCorrColorDEBUG, state.d_numCorrColorDEBUG, sizeof(float) * numOverlapImagePairs,
+                              cudaMemcpyDeviceToHost));
+//    float *J = new float[sizeJtr];
+//    CUDA_SAFE_CALL(cudaMemcpy(J, state.d_J, sizeof(float) * sizeJtr, cudaMemcpyDeviceToHost));
 
     printf("image pair num: %d\n", numOverlapImagePairs);
     for (int i = 0; i < numOverlapImagePairs; ++i) {
-        printf("image pair (%d, %d): %f %d %f\n", denseOverlappingImages[i].x, denseOverlappingImages[i].y,
-               denseCorrCounts[i], numCorrDEBUG[i], sumResidualDEBUG[i]);
+        printf("image pair (%d, %d): %f %d %f %d %f\n", denseOverlappingImages[i].x, denseOverlappingImages[i].y,
+               denseCorrCounts[i], numCorrDEBUG[i], sumResidualDEBUG[i],
+               numCorrColorDEBUG[i], sumResidualColorDEBUG[i]);
     }
-    printf("J:\n");
-    for (int i = 0; i < sizeJtr; ++i) {
-        printf("%f ", J[i]);
-    }
+//    printf("J:\n");
+//    for (int i = 0; i < sizeJtr; ++i) {
+//        printf("%f ", J[i]);
+//    }
     printf("\n");
 
     delete[] denseOverlappingImages;
     delete[] denseCorrCounts;
     delete[] sumResidualDEBUG;
     delete[] numCorrDEBUG;
-    delete[] J;
+//    delete[] J;
 #endif
 
     return true;

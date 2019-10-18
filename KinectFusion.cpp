@@ -164,7 +164,7 @@ bool KinectFusion::process(float *depth_frame, float *image_frame) {
     frame_id++;
 }
 
-bool KinectFusion::process(float *depth_frame, float *image_frame, Mat4f &transform){
+bool KinectFusion::process(float *depth_frame, float *image_frame, Mat4f &transform) {
     surface_measurement(depth_frame, image_frame);
 
     cache_data();
@@ -201,16 +201,16 @@ void KinectFusion::optimize() {
     parameters.denseDistThresh = 5;
     parameters.denseDepthMax = 1000.f;
     parameters.denseDepthMin = 0.f;
-    parameters.denseNormalThresh = 0.9;
+    parameters.denseNormalThresh = 0.9f;
     parameters.denseColorThresh = 0.1f;
     parameters.denseColorGradientMin = 0.005f;
     parameters.denseOverlapCheckSubsampleFactor = 4;
     parameters.minNumOverlapCorr = 10;
     parameters.minNumDenseCorr = 100;
     parameters.boundingMin = config.volume_origin;
-    parameters.boundingMax = config.volume_origin +
-                             Vec3f(config.volume_size.x, config.volume_size.y, config.volume_size.z) *
-                             config.voxel_scale;
+    parameters.boundingMax = config.volume_origin + Vec3f(config.volume_size.x * config.voxel_scale,
+                                                          config.volume_size.y * config.voxel_scale,
+                                                          config.volume_size.z * config.voxel_scale);
 
     //input
     SolverInput input;
@@ -226,7 +226,7 @@ void KinectFusion::optimize() {
     input.weightsDenseColor = new float[nNonLinearIterations];
     for (int i = 0; i < nNonLinearIterations; ++i) {
         input.weightsDenseDepth[i] = 1.f;
-        input.weightsDenseColor[i] = 1.f;
+        input.weightsDenseColor[i] = 100.f;//TODO 待测试
     }
 
     // state
@@ -266,6 +266,8 @@ void KinectFusion::optimize() {
 #ifdef DEBUG
     CUDA_SAFE_CALL(cudaMalloc(&state.d_sumResidualDEBUG, sizeof(float) * numDenseImPairs));
     CUDA_SAFE_CALL(cudaMalloc(&state.d_numCorrDEBUG, sizeof(int) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_sumResidualColorDEBUG, sizeof(float) * numDenseImPairs));
+    CUDA_SAFE_CALL(cudaMalloc(&state.d_numCorrColorDEBUG, sizeof(int) * numDenseImPairs));
     CUDA_SAFE_CALL(cudaMalloc(&state.d_J, sizeof(float) * 6 * numOfImages));
 #endif
 
@@ -304,6 +306,8 @@ void KinectFusion::optimize() {
 #ifdef DEBUG
     CUDA_SAFE_FREE(state.d_sumResidualDEBUG);
     CUDA_SAFE_FREE(state.d_numCorrDEBUG);
+    CUDA_SAFE_FREE(state.d_sumResidualColorDEBUG);
+    CUDA_SAFE_FREE(state.d_numCorrColorDEBUG);
     CUDA_SAFE_FREE(state.d_J);
 #endif
 }

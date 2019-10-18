@@ -5,6 +5,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <fstream>
+#include <cfloat>
 
 typedef Eigen::Vector4f Vec4f;
 typedef Eigen::Vector3f Vec3f;

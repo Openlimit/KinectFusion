@@ -48,7 +48,7 @@ __global__ void estimate_step_kernel(Mat4f cur_pose, Mat4f pre_pose_inv, Mat3f K
         Vec4f cur_vertex(cur_vertex_map[idx](0), cur_vertex_map[idx](1), cur_vertex_map[idx](2), 1);
         Vec3f cur_normal = cur_normal_map[idx];
 
-        if (!isnan(cur_normal(0)) && (cur_vertex(0) != 0.f || cur_vertex(1) != 0.f || cur_vertex(2) != 0.f)) {
+        if (cur_normal(0) != FLT_MAX && (cur_vertex(0) != 0.f || cur_vertex(1) != 0.f || cur_vertex(2) != 0.f)) {
             Vec4f cur_vertex_g4 = cur_pose * cur_vertex;
             Vec4f pre_vertex = pre_pose_inv * cur_vertex_g4;
             Vec3f pre_vertex3 = pre_vertex.head(3);
@@ -60,7 +60,7 @@ __global__ void estimate_step_kernel(Mat4f cur_pose, Mat4f pre_pose_inv, Mat3f K
                 Vec3f pre_vertex_g = pre_vertex_map[pre_idx];
                 Vec3f pre_normal_g = pre_normal_map[pre_idx];
 
-                if (!isnan(pre_normal_g(0)) &&
+                if (pre_normal_g(0) != FLT_MAX &&
                     (pre_vertex_g(0) != 0.f || pre_vertex_g(1) != 0.f || pre_vertex_g(2) != 0.f)) {
                     Vec3f cur_vertex_g = cur_vertex_g4.head(3);
                     Vec3f res = cur_vertex_g - pre_vertex_g;

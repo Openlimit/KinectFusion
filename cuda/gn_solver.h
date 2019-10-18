@@ -34,6 +34,7 @@ struct CUDACachedFrame {
     }
 
     void free() {
+        CUDA_SAFE_FREE(d_depthMap);
         CUDA_SAFE_FREE(d_depthDownsampled);
         CUDA_SAFE_FREE(d_cameraposDownsampled);
         CUDA_SAFE_FREE(d_normalsDownsampled);
@@ -72,6 +73,8 @@ struct SolverInput {
 struct SolverState {
     float *d_sumResidualDEBUG;
     int *d_numCorrDEBUG;
+    float *d_sumResidualColorDEBUG;
+    int *d_numCorrColorDEBUG;
     float *d_J;
 
     Vec3f *d_deltaRot;                    // Current linear update to be computed
