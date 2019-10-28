@@ -54,6 +54,8 @@ public:
 
     void extract_mesh(std::string &path);
 
+    void extract_mesh_bin(std::string &path);
+
     void save_tsdf(std::string &path);
 
     void download_depth_map(std::string &outPath);

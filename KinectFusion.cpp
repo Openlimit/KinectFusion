@@ -125,6 +125,29 @@ void KinectFusion::extract_mesh(std::string &path) {
     file.close();
 }
 
+void KinectFusion::extract_mesh_bin(std::string &path) {
+    std::vector<float3> triangles;
+    marching_cubes(tsdfVolume, config.volume_size, config.voxel_scale, config.volume_origin, number_vertices_table,
+                   triangle_table, triangles);
+
+    int nv = triangles.size();
+    int nf = nv / 3;
+    std::ofstream file(path, std::ios::binary);
+    file.write((char *) &nv, sizeof(int));
+    file.write((char *) &nf, sizeof(int));
+    for (int i = 0; i < triangles.size(); i++) {
+        float3 point = triangles[i];
+        file.write((char *) &point.x, sizeof(float));
+        file.write((char *) &point.y, sizeof(float));
+        file.write((char *) &point.z, sizeof(float));
+    }
+    for (int i = 0; i < triangles.size(); i++) {
+        file.write((char *) &i, sizeof(int));
+    }
+
+    file.close();
+}
+
 void KinectFusion::save_tsdf(std::string &path) {
     int size = config.volume_size.x * config.volume_size.y * config.volume_size.z;
 
@@ -226,7 +249,7 @@ void KinectFusion::optimize() {
     input.weightsDenseColor = new float[nNonLinearIterations];
     for (int i = 0; i < nNonLinearIterations; ++i) {
         input.weightsDenseDepth[i] = 1.f;
-        input.weightsDenseColor[i] = 100.f;//TODO 待测试
+        input.weightsDenseColor[i] = 50.f;//TODO 待测试
     }
 
     // state
