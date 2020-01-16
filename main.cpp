@@ -211,7 +211,7 @@ void project_inv(Vec3f &point, Vec3f &p, CameraParameter &param) {
 }
 
 void compute3DMarks(std::string &depth_path, std::string &marks_path, std::vector<Vec3f> &marks3D,
-                    CameraParameter &param, bool isFloat16 = true, int video_depth_time = 2) {
+                    CameraParameter &param, bool isFloat16 = true, int video_depth_time = 1) {
     float *depth = new float[param.height * param.width];
     if (isFloat16)
         readDepthFloat16(depth_path, depth, param);
@@ -233,6 +233,23 @@ void compute3DMarks(std::string &depth_path, std::string &marks_path, std::vecto
     }
 
     delete[] depth;
+}
+
+void readTrans(std::string &name, Mat4f &trans) {
+    std::ifstream fs(name.c_str(), std::ios::binary);
+    float tmp[16];
+    fs.read((char *) tmp, sizeof(float) * 16);
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            trans(i, j) = tmp[i * 4 + j];
+        }
+    }
+    fs.close();
+
+    Mat4f I;
+    I.setIdentity();
+    I(2, 2) = -1;
+    trans = I * trans * I;
 }
 
 //int main() {
@@ -330,31 +347,231 @@ void compute3DMarks(std::string &depth_path, std::string &marks_path, std::vecto
 //    return 0;
 //}
 
+//int main() {
+//    std::string dir = "/data1/3D_scan/hdRawScan/";
+//    std::string path = dir + "depth/";
+//    std::string image_path = dir + "bgra/";
+//    std::string out_dir = "/home/meidai/下载/kinectfusion1/";
+//    std::string trans_dir = out_dir + "trans/";
+//    std::string trans_op_dir = out_dir + "trans_op/";
+//    std::string first_depth_path = dir + "depth/0.bin";
+//    std::string marks_path = dir + "marks/0.bin";
+////    std::string marks_path = dir + "marks.bin";
+//
+//    ////图片分辨率是depth两倍
+//    CameraParameter param;
+//    param.width = 360;
+//    param.height = 640;
+//    float fov = 61.459709f;
+//    float focal = 0.5f * param.height / tanf(0.5f * fov * M_PI / 180.0f);
+//    param.focal_x = focal;
+//    param.focal_y = focal;
+//    param.principal_x = (param.width - 1) / 2.0f;
+//    param.principal_y = (param.height - 1) / 2.0f;
+//
+//    std::vector<Vec3f> marks;
+////    read3DMarks(marks_path, marks);
+//    compute3DMarks(first_depth_path, marks_path, marks, param);
+//
+//    Vec3f max_marks(-1e9, -1e9, -1e9), min_marks(1e9, 1e9, 1e9);
+//    for (int i = 0; i < marks.size(); ++i) {
+//        for (int j = 0; j < 3; ++j) {
+//            if (marks[i](j) < min_marks(j))
+//                min_marks(j) = marks[i](j);
+//            if (marks[i](j) > max_marks(j))
+//                max_marks(j) = marks[i](j);
+//        }
+//    }
+//    float faceRatio = 2.2;
+//    float fw = (max_marks(1) - min_marks(1)) * faceRatio;
+//    float half_fw = fw * 0.5f;
+//    float xCenter = 0.5f * (max_marks(0) + min_marks(0));
+//    float yCenter = 0.8f * max_marks(1) + 0.2f * min_marks(1);
+//    min_marks(0) = xCenter - half_fw;
+//    min_marks(1) = yCenter - half_fw;
+//    min_marks(2) -= 15;
+//
+//    KinectConfig config;
+//    config.voxel_scale = fw / (config.volume_size.x - 1);
+//    config.truncation_distance = config.voxel_scale * 10;
+//    config.volume_origin = min_marks;
+//
+//    KinectFusion kinectFusion(param, config);
+//
+//    std::vector<std::string> file_list;
+//    readFiles(file_list, path);
+//    std::sort(file_list.begin(), file_list.end(), compare);
+//
+//    time_t t00 = time(0);
+//    float *depth = new float[param.height * param.width];
+////    float *image = new float[param.height * param.width];
+//    for (int i = 0; i < file_list.size(); ++i) {
+//        std::string name = path + file_list[i];
+//        std::string image_name = image_path + file_list[i];
+//        std::cout << name << std::endl;
+//        readDepthFloat16(name, depth, param);
+////        readImage(image_name, image, param);
+////        kinectFusion.process(depth, image);
+//        kinectFusion.process(depth);
+//    }
+////    std::string tmp_path = "/home/meidai/下载/opengl/extract_points.xyz";
+////    kinectFusion.extract_points(tmp_path);
+////    return 0;
+//
+//    time_t t01 = time(0);
+//    printf("process time: %ld\n", t01 - t00);
+//
+//    std::string save_path = out_dir + "trajectory_org.obj";
+//    save_camera_trajectory(save_path, kinectFusion.pose_list);
+////    std::string mesh_obj_path = out_dir + "mesh128_org.obj";
+////    kinectFusion.extract_mesh(mesh_obj_path);
+////    return 0;
+//    std::string mesh_path = out_dir + "mesh128_org.bin";
+//    kinectFusion.extract_mesh_bin(mesh_path);
+//    for (int i = 0; i < file_list.size(); i++) {
+//        std::string trans_path = trans_dir + file_list[i];
+//        saveMat(trans_path, kinectFusion.pose_list[i]);
+//    }
+//
+//    time_t t1 = time(0);
+//    kinectFusion.optimize();
+//    time_t t2 = time(0);
+//    printf("optimize time: %ld\n", t2 - t1);
+//
+//    kinectFusion.reFusion();
+//    time_t t3 = time(0);
+//    printf("reFusion time: %ld\n", t3 - t2);
+//
+//    std::string save_path_op = out_dir + "trajectory_op.obj";
+//    save_camera_trajectory(save_path_op, kinectFusion.pose_list);
+//    std::string mesh_path_op = out_dir + "mesh128_op.bin";
+//    kinectFusion.extract_mesh_bin(mesh_path_op);
+//    for (int i = 0; i < file_list.size(); i++) {
+//        std::string trans_path = trans_op_dir + file_list[i];
+//        saveMat(trans_path, kinectFusion.pose_list[i]);
+//    }
+//
+//    return 0;
+//}
+
+//int main() {
+//    std::string dir = "/data1/3D_scan/yl/frame_data_yl0/";
+//    std::string path = dir + "depth/";
+//    std::string out_dir = "/home/meidai/下载/kinectfusion2/";
+//    std::string trans_dir = dir + "trans/";
+//    std::string trans_op_dir = dir + "trans_op/";
+//    std::string first_depth_path = dir + "depth/0.bin";
+//    std::string marks_path = dir + "marks/0.bin";
+////    std::string marks_path = dir + "marks.bin";
+//
+//    CameraParameter param;
+//    param.width = 480;
+//    param.height = 640;
+//    param.focal_x = 594.818678f;//0.5 * param.height / tan(0.5 * param.fov * M_PI / 180.0)
+//    param.focal_y = 594.818678f;
+//    param.principal_x = (480 - 1) / 2.0f;
+//    param.principal_y = (640 - 1) / 2.0f;
+//
+//    std::vector<Vec3f> marks;
+////    read3DMarks(marks_path, marks);
+//    compute3DMarks(first_depth_path, marks_path, marks, param);
+//
+//    Vec3f max_marks(-1e9, -1e9, -1e9), min_marks(1e9, 1e9, 1e9);
+//    for (int i = 0; i < marks.size(); ++i) {
+//        for (int j = 0; j < 3; ++j) {
+//            if (marks[i](j) < min_marks(j))
+//                min_marks(j) = marks[i](j);
+//            if (marks[i](j) > max_marks(j))
+//                max_marks(j) = marks[i](j);
+//        }
+//    }
+//    float faceRatio = 2.2;
+//    float fw = (max_marks(1) - min_marks(1)) * faceRatio;
+//    float half_fw = fw * 0.5f;
+//    float xCenter = 0.5f * (max_marks(0) + min_marks(0));
+//    float yCenter = 0.8f * max_marks(1) + 0.2f * min_marks(1);
+//    min_marks(0) = xCenter - half_fw;
+//    min_marks(1) = yCenter - half_fw;
+//    min_marks(2) -= 15;
+//
+//    KinectConfig config;
+//    config.voxel_scale = fw / (config.volume_size.x - 1);
+//    config.truncation_distance = config.voxel_scale * 10;
+//    config.volume_origin = min_marks;
+//
+//    KinectFusion kinectFusion(param, config);
+//
+//    std::vector<std::string> file_list;
+//    readFiles(file_list, path);
+//    std::sort(file_list.begin(), file_list.end(), compare);
+//
+//    time_t t00 = time(0);
+//    float *depth = new float[param.height * param.width];
+//    for (int i = 0; i < file_list.size(); ++i) {
+//        std::string name = path + file_list[i];
+//        std::cout << name << std::endl;
+//        readDepthFloat16(name, depth, param);
+//        kinectFusion.process(depth);
+//    }
+//
+//    time_t t01 = time(0);
+//    printf("process time: %ld\n", t01 - t00);
+//
+//    std::string save_path = out_dir + "trajectory_org.obj";
+//    save_camera_trajectory(save_path, kinectFusion.pose_list);
+//    std::string mesh_path = out_dir + "mesh128_org.bin";
+//    kinectFusion.extract_mesh_bin(mesh_path);
+//    for (int i = 0; i < file_list.size(); i++) {
+//        std::string trans_path = trans_dir + file_list[i];
+//        saveMat(trans_path, kinectFusion.pose_list[i]);
+//    }
+//
+//    time_t t1 = time(0);
+//    kinectFusion.optimize();
+//    time_t t2 = time(0);
+//    printf("optimize time: %ld\n", t2 - t1);
+//
+//    kinectFusion.reFusion();
+//    time_t t3 = time(0);
+//    printf("reFusion time: %ld\n", t3 - t2);
+//
+//    std::string save_path_op = out_dir + "trajectory_op.obj";
+//    save_camera_trajectory(save_path_op, kinectFusion.pose_list);
+//    std::string mesh_path_op = out_dir + "mesh128_op.bin";
+//    kinectFusion.extract_mesh_bin(mesh_path_op);
+//    for (int i = 0; i < file_list.size(); i++) {
+//        std::string trans_path = trans_op_dir + file_list[i];
+//        saveMat(trans_path, kinectFusion.pose_list[i]);
+//    }
+//
+//    return 0;
+//}
+
 int main() {
-    std::string dir = "/data1/3D_scan/hdRawScan/";
+    std::string dir = "/data1/3D_scan/source/";
     std::string path = dir + "depth/";
     std::string image_path = dir + "bgra/";
-    std::string out_dir = "/home/meidai/下载/kinectfusion/";
-    std::string trans_dir = dir + "trans/";
-    std::string trans_op_dir = dir + "trans_op/";
+    std::string init_trans_path = dir + "transform/";
+    std::string out_dir = dir;
+//    std::string trans_dir = out_dir + "trans/";
+    std::string trans_op_dir = out_dir + "trans_op/";
     std::string first_depth_path = dir + "depth/0.bin";
     std::string marks_path = dir + "marks/0.bin";
 //    std::string marks_path = dir + "marks.bin";
 
-    ////图片分辨率是depth两倍
     CameraParameter param;
     param.width = 360;
     param.height = 640;
-    float fov = 67.564216f;
+    float fov = 61.459709f;
     float focal = 0.5f * param.height / tanf(0.5f * fov * M_PI / 180.0f);
     param.focal_x = focal;
     param.focal_y = focal;
-    param.principal_x = (480 - 1) / 2.0f;
-    param.principal_y = (640 - 1) / 2.0f;
+
+    param.principal_x = (param.width - 1) / 2.0f;
+    param.principal_y = (param.height - 1) / 2.0f;
 
     std::vector<Vec3f> marks;
-//    read3DMarks(marks_path, marks);
-    compute3DMarks(first_depth_path, marks_path, marks, param);
+    compute3DMarks(first_depth_path, marks_path, marks, param, true, 3);
 
     Vec3f max_marks(-1e9, -1e9, -1e9), min_marks(1e9, 1e9, 1e9);
     for (int i = 0; i < marks.size(); ++i) {
@@ -387,26 +604,31 @@ int main() {
 
     time_t t00 = time(0);
     float *depth = new float[param.height * param.width];
-    float *image = new float[param.height * param.width];
+    std::vector<Mat4f> trans_list;
     for (int i = 0; i < file_list.size(); ++i) {
         std::string name = path + file_list[i];
-        std::string image_name = image_path + file_list[i];
+        std::string trans_name = init_trans_path + file_list[i];
         std::cout << name << std::endl;
+        Mat4f trans;
         readDepthFloat16(name, depth, param);
-        readImage(image_name, image, param);
-        kinectFusion.process(depth, image);
+        readTrans(trans_name, trans);
+        kinectFusion.process(depth, trans);
+        trans_list.push_back(trans);
     }
     time_t t01 = time(0);
     printf("process time: %ld\n", t01 - t00);
 
-    std::string save_path = out_dir + "trajectory_org.obj";
-    save_camera_trajectory(save_path, kinectFusion.pose_list);
+//    std::string save_path = out_dir + "trajectory_ios.obj";
+//    save_camera_trajectory(save_path, kinectFusion.pose_list);
+//    std::string mesh_obj_path = out_dir + "mesh128_org.obj";
+//    kinectFusion.extract_mesh(mesh_obj_path);
+//    return 0;
     std::string mesh_path = out_dir + "mesh128_org.bin";
     kinectFusion.extract_mesh_bin(mesh_path);
-    for (int i = 0; i < file_list.size(); i++) {
-        std::string trans_path = trans_dir + file_list[i];
-        saveMat(trans_path, kinectFusion.pose_list[i]);
-    }
+//    for (int i = 0; i < file_list.size(); i++) {
+//        std::string trans_path = trans_dir + file_list[i];
+//        saveMat(trans_path, kinectFusion.pose_list[i]);
+//    }
 
     time_t t1 = time(0);
     kinectFusion.optimize();
@@ -419,11 +641,17 @@ int main() {
 
     std::string save_path_op = out_dir + "trajectory_op.obj";
     save_camera_trajectory(save_path_op, kinectFusion.pose_list);
-    std::string mesh_path_op = out_dir + "mesh128_op.bin";
-    kinectFusion.extract_mesh_bin(mesh_path_op);
+    std::string mesh_path_op = out_dir + "mesh128_op.obj";
+//    kinectFusion.extract_mesh_bin(mesh_path_op);
+    kinectFusion.extract_mesh(mesh_path_op);
+
+    Mat4f I;
+    I.setIdentity();
+    I(2, 2) = -1;
     for (int i = 0; i < file_list.size(); i++) {
         std::string trans_path = trans_op_dir + file_list[i];
-        saveMat(trans_path, kinectFusion.pose_list[i]);
+        Mat4f trans = I * kinectFusion.pose_list[i] * I;
+        saveMat(trans_path, trans);
     }
 
     return 0;

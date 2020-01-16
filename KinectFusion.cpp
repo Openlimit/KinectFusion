@@ -109,6 +109,21 @@ void KinectFusion::reset() {
                               sizeof(float2) * config.volume_size.x * config.volume_size.y * config.volume_size.z));
 }
 
+void KinectFusion::extract_points(std::string &path) {
+    std::vector<float3> triangles;
+    marching_cubes(tsdfVolume, config.volume_size, config.voxel_scale, config.volume_origin, number_vertices_table,
+                   triangle_table, triangles);
+
+    std::ofstream file(path);
+    for (int i = 0; i < triangles.size(); i += 3) {
+        for (int k = 0; k < 3; ++k) {
+            float3 point = triangles[i + k];
+            file << point.x << " " << point.y << " " << point.z << std::endl;
+        }
+    }
+    file.close();
+}
+
 void KinectFusion::extract_mesh(std::string &path) {
     std::vector<float3> triangles;
     marching_cubes(tsdfVolume, config.volume_size, config.voxel_scale, config.volume_origin, number_vertices_table,
@@ -164,6 +179,30 @@ void KinectFusion::save_tsdf(std::string &path) {
     delete[] tsdfVolume_host;
 }
 
+bool KinectFusion::process(float *depth_frame) {
+    surface_measurement(depth_frame);
+
+    cache_data();
+
+    bool icp_success = true;
+    if (frame_id > 0) {
+        icp_success = pose_estimation();
+    }
+    if (!icp_success) {
+        std::cout << "icp fail" << std::endl;
+        return false;
+    }
+
+    pose_list.push_back(cur_pose);
+
+    surface_reconstruction();
+
+    surface_prediction();
+
+    frame_id++;
+}
+
+
 bool KinectFusion::process(float *depth_frame, float *image_frame) {
     surface_measurement(depth_frame, image_frame);
 
@@ -184,6 +223,18 @@ bool KinectFusion::process(float *depth_frame, float *image_frame) {
 
     surface_prediction();
 
+    frame_id++;
+}
+
+bool KinectFusion::process(float *depth_frame, Mat4f &transform) {
+    surface_measurement(depth_frame);
+
+    cache_data();
+
+    cur_pose = transform;
+    pose_list.push_back(transform);
+
+    surface_reconstruction();
     frame_id++;
 }
 
@@ -249,7 +300,7 @@ void KinectFusion::optimize() {
     input.weightsDenseColor = new float[nNonLinearIterations];
     for (int i = 0; i < nNonLinearIterations; ++i) {
         input.weightsDenseDepth[i] = 1.f;
-        input.weightsDenseColor[i] = 50.f;//TODO 待测试
+        input.weightsDenseColor[i] = 0.f;//TODO 待测试
     }
 
     // state
@@ -349,14 +400,31 @@ void KinectFusion::cache_data() {
     copyVec3ToVec4(cachedFrame.d_cameraposDownsampled, cur_vertex_pyramid[lv], size, 1.0f);
     copyVec3ToVec4(cachedFrame.d_normalsDownsampled, cur_normal_pyramid[lv], size, 0.f);
 
-    int factor = cam_param[0].width / cam_param[lv].width;
-    downsample(image_map, cachedFrame.d_intensityDownsampled, cam_param[lv].width, cam_param[lv].height, factor);
-    compute_gradient(cachedFrame.d_intensityDownsampled, cachedFrame.d_intensityDerivsDownsampled,
-                     cam_param[lv].width, cam_param[lv].height);
+//    int factor = cam_param[0].width / cam_param[lv].width;
+//    downsample(image_map, cachedFrame.d_intensityDownsampled, cam_param[lv].width, cam_param[lv].height, factor);
+//    compute_gradient(cachedFrame.d_intensityDownsampled, cachedFrame.d_intensityDerivsDownsampled,
+//                     cam_param[lv].width, cam_param[lv].height);
 
     cachedFrames.push_back(cachedFrame);
 }
 
+void KinectFusion::surface_measurement(float *depth_frame) {
+    CUDA_SAFE_CALL(cudaMemcpy(depth_map, depth_frame, sizeof(float) * cam_param[0].width * cam_param[0].height,
+                              cudaMemcpyHostToDevice));
+
+    bilateral_filter(depth_map, depth_pyramid[0], cam_param[0].width, cam_param[0].height,
+                     config.bfilter_kernel_size, config.bfilter_range_sigma, config.bfilter_spatial_sigma);
+
+    for (int i = 1; i < LEVELS; ++i) {
+        pyrDown(depth_pyramid[i - 1], depth_pyramid[i], cam_param[i].width, cam_param[i].height,
+                config.bfilter_kernel_size, config.bfilter_range_sigma);
+    }
+
+    for (int i = 0; i < LEVELS; ++i) {
+        compute_vertex_map(depth_pyramid[i], cur_vertex_pyramid[i], K[i], cam_param[i].width, cam_param[i].height);
+        compute_normal_map(cur_vertex_pyramid[i], cur_normal_pyramid[i], cam_param[i].width, cam_param[i].height);
+    }
+}
 
 void KinectFusion::surface_measurement(float *depth_frame, float *image_frame) {
     CUDA_SAFE_CALL(cudaMemcpy(depth_map, depth_frame, sizeof(float) * cam_param[0].width * cam_param[0].height,
@@ -415,6 +483,9 @@ bool KinectFusion::pose_estimation() {
             cur_pose = inc * cur_pose;
         }
     }
+
+//    std::cout << "cur_pose:" << std::endl;
+//    std::cout << cur_pose << std::endl;
 
     return true;
 }

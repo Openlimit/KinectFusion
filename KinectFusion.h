@@ -42,7 +42,11 @@ public:
 
     ~KinectFusion();
 
+    bool process(float *depth_frame);
+
     bool process(float *depth_frame, float *image_frame);
+
+    bool process(float *depth_frame, Mat4f &transform);
 
     bool process(float *depth_frame, float *image_frame, Mat4f &transform);
 
@@ -51,6 +55,8 @@ public:
     void reset();
 
     void reFusion();
+
+    void extract_points(std::string &path);
 
     void extract_mesh(std::string &path);
 
@@ -75,6 +81,8 @@ public:
     void download_pre_vertex_pyramid_with_pose(std::string &outPath, Mat4f &pose);
 
 //private:
+    void surface_measurement(float *depth_frame);
+
     void surface_measurement(float *depth_frame, float *image_frame);
 
     bool pose_estimation();

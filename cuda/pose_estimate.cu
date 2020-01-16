@@ -82,7 +82,6 @@ __global__ void estimate_step_kernel(Mat4f cur_pose, Mat4f pre_pose_inv, Mat3f K
 
     float row[7];
     if (correspondence_found) {
-        ////为啥不取反?
         Vec3f vxt_n = s.cross(n);
         row[0] = vxt_n(0);
         row[1] = vxt_n(1);
